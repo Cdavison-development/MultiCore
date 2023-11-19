@@ -1,3 +1,4 @@
+//import libraries and coordReader Files
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -16,21 +17,25 @@ double **readCoords();
 void *writeTourToFile();
 #endif
 
-
+//Provided functions
 int readNumOfCoords(char *filename);
 double **readCoords(char *filename, int numOfCoords);
 void *writeTourToFile(int *tour, int tourLength, char *filename);
 
+//Function to calculate the Euclidean distance between two points
 double distance(double x1, double y1, double x2, double y2) {
     return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
 }
 
+//Function to generate a distance matrix given a set of coordinates
 double **generateDistanceMatrix(double **coords, int numOfCoords) {
+    //Dynamically allocate memory for 2-D array
     double **matrix = (double **)malloc(numOfCoords * sizeof(double *));
     for (int i = 0; i < numOfCoords; i++) {
         matrix[i] = (double *)malloc(numOfCoords * sizeof(double));
     }
-    //#pragma omp parallel for
+    //generate empty distance matrix of size numOfCoords using parallel for loop  to distribute loop iterations within the team of threads
+    #pragma omp parallel for
     for (int i = 0; i < numOfCoords; i++) {
         matrix[i][i] = 0; // Distance from a point to itself is 0
         for (int j = i + 1; j < numOfCoords; j++) {
@@ -41,16 +46,20 @@ double **generateDistanceMatrix(double **coords, int numOfCoords) {
     return matrix;
 }
 
+ //Find the nearest neighbor for a given node in distance matrix.
 void findFurthestNeighbor(double **distanceMatrix, int numOfCoords, int currentNode, int *furthestIndex, double *furthestDistance) {
-    double maxDistance = DBL_MIN;
-    int maxIndex = -1;
+    double maxDistance = DBL_MIN; //Initialize with the smallest possible double value
+    int maxIndex = -1;             //Initialize with an invalid index
 
+
+    //Parallel loop over all nodes to find the furthest neighbor
     #pragma omp parallel for reduction(max:maxDistance)
     for (int i = 0; i < numOfCoords; i++) {
-        if (i != currentNode) {
-            double dist = distanceMatrix[currentNode][i];
+        if (i != currentNode) {                             //Skip the currentNode 
+            double dist = distanceMatrix[currentNode][i];   //Get the distance from currentNode to node i
             if (dist > maxDistance) {
                 maxDistance = dist;
+                //Critical section to update the furthest neighbor's index in a thread-safe manner
                 #pragma omp critical
                 {
                     if (dist > *furthestDistance) {
@@ -63,180 +72,12 @@ void findFurthestNeighbor(double **distanceMatrix, int numOfCoords, int currentN
     }
 }
 
-/* int *furthestInsertion(double **distanceMatrix, int numOfCoords) {
-    // Allocate memory for tour and unvisited nodes
-    int *tour = malloc((numOfCoords + 1) * sizeof(int));
-    int *unvisited = malloc(numOfCoords * sizeof(int));
-    for (int i = 1; i < numOfCoords; i++) {
-        unvisited[i - 1] = i;
-    }
-    int unvisitedCount = numOfCoords - 1;
-
-    // Start with the first node
-    tour[0] = 0;
-    int tourSize = 1;
-
-    // Find the furthest neighbor to 0 and add to the tour
-    int furthestIndex;
-    double furthestDistance;
-
-    // Find the furthest neighbor from node 0
-    findFurthestNeighbor(distanceMatrix, numOfCoords, 0, &furthestIndex, &furthestDistance);
-
-    tour[1] = furthestIndex;
-    tour[2] = 0; // Complete the initial loop
-    tourSize = 3;
-
-    // Remove the furthest neighbor from the unvisited list
-     for (int i = 0; i < unvisitedCount; i++) {
-        if (unvisited[i] == furthestIndex) {
-            unvisited[i] = unvisited[unvisitedCount - 1];
-            unvisitedCount--;
-            break;
-        }
-    } 
-
-
-        double MaxDist;
-        int MaxDistIndex,InsertPosition;
-    // Furthest insertion algorithm
-    while (tourSize < numOfCoords + 1) {
-        MaxDist = DBL_MIN;
-        MaxDistIndex = -1, InsertPosition = -1;
-
-        
-        //double globalFurthestDistance = DBL_MIN;
-        //int globalFurthestIndex = -1;
-        #pragma omp parallel
-        {
-            double localMaxNodeDist = DBL_MIN;
-            int localMaxDistIndex = -1;
-
-            #pragma omp for
-            for (int idx = 0; idx < unvisitedCount; idx++) {
-                int node = unvisited[idx];
-                for (int j = 0; j < tourSize; j++) {
-                    double nodeDist = distanceMatrix[tour[j]][node];
-                    if (nodeDist > localMaxNodeDist) {
-                        localMaxNodeDist = nodeDist;
-                        localMaxDistIndex = node;
-                    }
-                }
-            }
-
-            #pragma omp critical
-           {
-                if (localMaxNodeDist > MaxDist) {
-                    MaxDist = localMaxNodeDist;
-                    MaxDistIndex = localMaxDistIndex;
-                }
-            }
-        }
-
-        double minInsertDist = DBL_MAX;
-        #pragma omp parallel
-        {
-            double localMinInsertDist = DBL_MAX;
-            int localInsertPosition = -1;
-
-            //#pragma omp for
-            for (int j = 0; j < tourSize - 1; j++) {
-                double insertDist = distanceMatrix[tour[j]][MaxDistIndex] + distanceMatrix[MaxDistIndex][tour[j + 1]] - distanceMatrix[tour[j]][tour[j + 1]];
-                if (insertDist < localMinInsertDist) {
-                    localMinInsertDist = insertDist;
-                    localInsertPosition = j + 1;
-                }
-            }
-
-           #pragma omp critical
-           {
-                if (localMinInsertDist < minInsertDist) {
-                    minInsertDist = localMinInsertDist;
-                    InsertPosition = localInsertPosition;
-                }
-           }
-        }
-        printf("Selected Node: %d, Insert Position: %d\n", MaxDistIndex, InsertPosition);
-        
-
-        if (MaxDistIndex != -1) {
-    printf("Tour before insertion: ");
-    for (int i = 0; i < tourSize; i++) {
-        printf("%d ", tour[i]);
-    }
-    printf("\n");
-
-    // Shift elements to make space for the new node
-    for (int i = tourSize; i > InsertPosition; i--) {
-        tour[i] = tour[i - 1];
-    }
-
-    // Insert the furthest node at the calculated position
-    tour[InsertPosition] = MaxDistIndex;
-
-    printf("Tour after insertion: ");
-    for (int i = 0; i < tourSize + 1; i++) {
-        printf("%d ", tour[i]);
-    }
-    printf("\n");
-
-    printf("Unvisited list before update: ");
-    for (int i = 0; i < unvisitedCount; i++) {
-        printf("%d ", unvisited[i]);
-    }
-    printf("\n");
-
-    // Remove the inserted node from the unvisited list
-    for (int i = 0; i < unvisitedCount; i++) {
-        if (unvisited[i] == MaxDistIndex) {
-            unvisited[i] = unvisited[unvisitedCount - 1];
-            unvisitedCount--;
-            break;
-        }
-    }
-
-    printf("Unvisited list after update: ");
-    for (int i = 0; i < unvisitedCount; i++) {
-        printf("%d ", unvisited[i]);
-    }
-    printf("\n");
-
-    // Increment the tour size
-    tourSize++;
-    printf("Tour size updated to: %d\n", tourSize);
-        }
-    }
-    
-free(unvisited);
-return tour;
-} */ 
-
-/* void findFurthestNeighbor(double **distanceMatrix, int numOfCoords, int currentNode, int *furthestIndex, double *furthestDistance) {
-    double maxDistance = DBL_MIN;
-    int maxIndex = -1;
-
-    #pragma omp parallel for reduction(max:maxDistance)
-    for (int i = 0; i < numOfCoords; i++) {
-        if (i != currentNode) {
-            double dist = distanceMatrix[currentNode][i];
-            if (dist > maxDistance) {
-                maxDistance = dist;
-                #pragma omp critical
-                {
-                    if (dist > *furthestDistance) {
-                        *furthestDistance = dist;
-                        *furthestIndex = i;
-                    }
-                }
-            }
-        }
-    }
-}
- */
+//Cheapest insertion algorithm for TSP problem
 int *furthestInsertion(double **distanceMatrix, int numOfCoords) {
     // Allocate memory for tour and unvisited nodes
-    int *tour = malloc((numOfCoords + 1) * sizeof(int));
-    int *unvisited = malloc(numOfCoords * sizeof(int));
+    int *tour = malloc((numOfCoords + 1) * sizeof(int));    //Allocate tour memory
+    int *unvisited = malloc(numOfCoords * sizeof(int));     //Allocate unisited memory for list of unvisited nodes
+    // Initialize unvisited nodes starting from 1
     for (int i = 1; i < numOfCoords; i++) {
         unvisited[i - 1] = i;
     }
@@ -257,56 +98,58 @@ int *furthestInsertion(double **distanceMatrix, int numOfCoords) {
     tour[2] = 0; // Complete the initial loop
     tourSize = 3;
 
+    //NOTE: Following section is included twice as the tour initialises first node twice, i.e. instead of 0,4,0 returns 0,4,4,0
+    //This fix removes the first duplicate.
+
     // Remove the furthest neighbor from the unvisited list
      for (int i = 0; i < unvisitedCount; i++) {
         if (unvisited[i] == furthestIndex) {
-            unvisited[i] = unvisited[unvisitedCount - 1];
-            unvisitedCount--;
+            unvisited[i] = unvisited[unvisitedCount - 1]; //Replace found node
+            unvisitedCount--;                             //Decrease count of Unvisited nodes
             break;
         }
     } 
 
+
+    //Prepare for the parallelized calculation of the cheapest insertion
+    //Allocating memory for relevant array variables
 
     double MaxDist;
     int MaxDistIndex,InsertPosition;
-
     int numThreads = omp_get_max_threads();
     double *localMaxDist = malloc(numThreads * sizeof(double));
-    //double *localMaxNodeDist = malloc(numThreads * sizeof(double));
     int *localMaxDistIndex = malloc(numThreads * sizeof(int));
     int *localInsertPositions = malloc(numThreads * sizeof(int));
     double *localMinInsertDist = malloc(numThreads * sizeof(double));
-    // Furthest insertion algorithm
 
+    //Tour construction until all nodes are visited
     while (tourSize < numOfCoords + 1) {
         MaxDist = DBL_MIN;
         MaxDistIndex = -1, InsertPosition = -1;
         double minInsertDist = DBL_MAX;
         
-        //double globalFurthestDistance = DBL_MIN;
-        //int globalFurthestIndex = -1;
+        //Parallel region to find the furthest node to insert
         #pragma omp parallel
         {
-            //double localMaxNodeDist = DBL_MIN;
-            //int localMaxDistIndex = -1;
-
+            //Assign threads to each local variable
             int threadID = omp_get_thread_num();
             localMaxDist[threadID] = DBL_MIN;
             localMaxDistIndex[threadID] = -1;
             localInsertPositions[threadID] = -1;
-
+            //Parallel loop over unvisited nodes
             #pragma omp for
+            //Find the node farthest from any node in the tour and its insertion position
             for (int idx = 0; idx < unvisitedCount; idx++) {
                 int node = unvisited[idx];
                 for (int j = 0; j < tourSize; j++) {
-                    double nodeDist = distanceMatrix[tour[j]][node];
-                    if (nodeDist > localMaxDist[threadID]) {
+                    double nodeDist = distanceMatrix[tour[j]][node];    //Calculate distance between current node and node being considered for insertion
+                    if (nodeDist > localMaxDist[threadID]) {            //Update Max distance and max distance index
                         localMaxDist[threadID] = nodeDist;
                         localMaxDistIndex[threadID] = node;
                     }
                 }
             }
-
+            //critical section to update the global maximum distance and insertion position
             #pragma omp critical
            {
                 if (localMaxDist[threadID] > MaxDist) {
@@ -319,19 +162,24 @@ int *furthestInsertion(double **distanceMatrix, int numOfCoords) {
         //double minInsertDist = DBL_MAX;
         #pragma omp parallel
         {
+            //Obtain the thread ID for managing local variables specific to each thread
+            //Initialize local minimum insertion distance and position for this thread
             int threadID = omp_get_thread_num();
             localMinInsertDist[threadID] = DBL_MAX;
             localInsertPositions[threadID] = -1;
             
-            //#pragma omp for
+            
+            //loop to find best insertion point
             for (int j = 0; j < tourSize - 1; j++) {
+                //calculate additional cost of inserting furthest node
                 double insertDist = distanceMatrix[tour[j]][MaxDistIndex] + distanceMatrix[MaxDistIndex][tour[j + 1]] - distanceMatrix[tour[j]][tour[j + 1]];
+                //Update local minimum insertion distance and position
                 if (insertDist < localMinInsertDist[threadID]) {
                     localMinInsertDist[threadID] = insertDist;
                     localInsertPositions[threadID] = j + 1;
                 }
             }
-
+            //critical section to update global minimum insertion distance and position
            #pragma omp critical
            {
                 if (localMinInsertDist[threadID] < minInsertDist) {
@@ -340,60 +188,39 @@ int *furthestInsertion(double **distanceMatrix, int numOfCoords) {
                 }
            }
         }
-        printf("Selected Node: %d, Insert Position: %d\n", MaxDistIndex, InsertPosition);
         
-
         if (MaxDistIndex != -1) {
-    printf("Tour before insertion: ");
-    for (int i = 0; i < tourSize; i++) {
-        printf("%d ", tour[i]);
-    }
-    printf("\n");
+            // Shift elements to make space for the new node
+            for (int i = tourSize; i > InsertPosition; i--) {
+                tour[i] = tour[i - 1];
+            }
+            // Insert the furthest node at the calculated position
+            tour[InsertPosition] = MaxDistIndex;
 
-    // Shift elements to make space for the new node
-    for (int i = tourSize; i > InsertPosition; i--) {
-        tour[i] = tour[i - 1];
-    }
-
-    // Insert the furthest node at the calculated position
-    tour[InsertPosition] = MaxDistIndex;
-
-    printf("Tour after insertion: ");
-    for (int i = 0; i < tourSize + 1; i++) {
-        printf("%d ", tour[i]);
-    }
-    printf("\n");
-
-    printf("Unvisited list before update: ");
-    for (int i = 0; i < unvisitedCount; i++) {
-        printf("%d ", unvisited[i]);
-    }
-    printf("\n");
-
-    // Remove the inserted node from the unvisited list
-    for (int i = 0; i < unvisitedCount; i++) {
-        if (unvisited[i] == MaxDistIndex) {
-            unvisited[i] = unvisited[unvisitedCount - 1];
-            unvisitedCount--;
-            break;
-        }
-    }
-
-    printf("Unvisited list after update: ");
-    for (int i = 0; i < unvisitedCount; i++) {
-        printf("%d ", unvisited[i]);
-    }
-    printf("\n");
-
-    // Increment the tour size
-    tourSize++;
-    printf("Tour size updated to: %d\n", tourSize);
-        }
-    }
+            // Remove the inserted node from the unvisited list
+            for (int i = 0; i < unvisitedCount; i++) {
+                if (unvisited[i] == MaxDistIndex) {
+                    unvisited[i] = unvisited[unvisitedCount - 1];
+                    unvisitedCount--;
+                    break;
+                }
+            }
+            // Increment the tour size
+            tourSize++;
     
-free(unvisited);
-return tour;
-} 
+            }
+        }
+    //Free allocated memory
+    free(localMaxDist);
+    free(localMaxDistIndex);
+    free(localInsertPositions);
+    free(localMinInsertDist);
+    free(unvisited);
+    return tour;
+
+    } 
+
+
 
 int main(int argc, char *argv[]) {
 
@@ -403,25 +230,24 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // argv[1] is the coordinate file name
-    // argv[2] is the output file name
+    //Initialising arguments
     char *inputFilename = argv[1];
-    char *outputFilename = argv[2];
+    char *outputFile = argv[2];
 
     int numOfCoords = readNumOfCoords(inputFilename);
-
+    //test case in case of break
     if (numOfCoords == -1) {
         fprintf(stderr, "Error reading number of coordinates from %s.\n", inputFilename);
         return EXIT_FAILURE;
     }
 
     double **coords = readCoords(inputFilename, numOfCoords);
-
+    //test case in case of break
     if (coords == NULL) {
         fprintf(stderr, "Error reading coordinates from %s.\n", inputFilename);
         return EXIT_FAILURE;
     }
-
+   
     // Calculate the distance matrix
     double **distanceMatrix = generateDistanceMatrix(coords, numOfCoords);
     if (distanceMatrix == NULL) {
@@ -437,8 +263,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Write the tour to the output file
-    writeTourToFile(tour, numOfCoords + 1, outputFilename); // Note: numOfCoords + 1 to include the return to the starting node
-
+    writeTourToFile(tour, numOfCoords + 1, outputFile); // Note: numOfCoords + 1 to include the return to the starting node
+    
+    
     // Free the memory
     for (int i = 0; i < numOfCoords; i++) {
         free(coords[i]);
@@ -447,6 +274,6 @@ int main(int argc, char *argv[]) {
     free(coords);
     free(distanceMatrix);
     free(tour);
-
+     
     return EXIT_SUCCESS;
 }

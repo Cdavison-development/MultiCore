@@ -3,10 +3,10 @@ CFLAGS=-std=c99 -O3
  
 
 ci: cInsertion.c coordReader.c
-	$(CC) $(CFLAGS) cInsertion.c coordReader.c -o ci.exe -lm -fopenmp
+	$(CC) $(CFLAGS) cInsertion.c coordReader.c -o ci.exe -lm 
 
 fi: fInsertion.c coordReader.c	
-	$(CC) $(CFLAGS) fInsertion.c coordReader.c -o fi.exe -lm -fopenmp
+	$(CC) $(CFLAGS) fInsertion.c coordReader.c -o fi.exe -lm 
 
 comp: ompcInsertion.c coordReader.c	
 	$(CC) $(CFLAGS) ompcInsertion.c coordReader.c -o comp.exe -lm -fopenmp
